@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>focussr</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen transition-colors duration-200">
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-center text-primary">focussr</h1>
+        </header>
+        
+        <!-- Timer Section -->
+        <section class="mb-8 p-6 bg-gray-100 dark:bg-gray-800 rounded-lg shadow-sm">
+            <div class="text-center mb-4">
+                <h2 class="text-2xl font-semibold mb-2">timer</h2>
+                <div class="text-5xl font-mono font-semibold mb-4" id="timer-display">25:00</div>
+                <div class="flex justify-center gap-2 mb-4">
+                    <button id="timer-start" class="px-4 py-2 bg-primary hover:bg-opacity-90 text-white rounded">start</button>
+                    <button id="timer-pause" class="px-4 py-2 bg-gray-500 hover:bg-opacity-90 text-white rounded hidden">pause</button>
+                    <button id="timer-reset" class="px-4 py-2 bg-gray-300 dark:bg-gray-700 hover:bg-opacity-90 text-gray-700 dark:text-gray-200 rounded">reset</button>
+                </div>
+                <div class="flex justify-center items-center gap-2">
+                    <label for="timer-duration" class="text-sm font-medium">minutes:</label>
+                    <input type="number" id="timer-duration" class="w-16 px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-base" value="25" min="1" max="120">
+                    <button id="timer-set" class="px-2 py-1 bg-primary hover:bg-opacity-90 text-white text-sm rounded">set</button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Task List Section -->
+        <section class="p-6 bg-gray-100 dark:bg-gray-800 rounded-lg shadow-sm">
+            <h2 class="text-2xl font-semibold mb-4">tasks</h2>
+            
+            <!-- Add Task Form -->
+            <form id="add-task-form" class="mb-6">
+                <div class="flex gap-2">
+                    <input 
+                        type="text" 
+                        id="new-task" 
+                        placeholder="add a new task..." 
+                        class="flex-grow px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-base"
+                        required
+                    >
+                    <button 
+                        type="submit" 
+                        class="px-4 py-2 bg-primary hover:bg-opacity-90 text-white rounded"
+                    >
+                        add
+                    </button>
+                </div>
+            </form>
+            
+            <!-- Task List -->
+            <div id="task-list" class="space-y-2">
+                <!-- Task items will be added here by JavaScript -->
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Initialize dark mode based on system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        
+        // Listen for system dark mode changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Task Management
+            const taskForm = document.getElementById('add-task-form');
+            const taskInput = document.getElementById('new-task');
+            const taskList = document.getElementById('task-list');
+            
+            // Timer Elements
+            const timerDisplay = document.getElementById('timer-display');
+            const startBtn = document.getElementById('timer-start');
+            const pauseBtn = document.getElementById('timer-pause');
+            const resetBtn = document.getElementById('timer-reset');
+            const durationInput = document.getElementById('timer-duration');
+            const setBtn = document.getElementById('timer-set');
+            
+            let timerDuration = 25 * 60; // Default: 25 minutes in seconds
+            let timeRemaining = timerDuration;
+            let timerInterval = null;
+            
+            // Initialize timer display
+            updateTimerDisplay();
+            
+            // Load tasks from localStorage
+            loadTasks();
+            
+            // Add new task
+            taskForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const taskText = taskInput.value.trim();
+                if (taskText) {
+                    addTask(taskText);
+                    taskInput.value = '';
+                }
+            });
+            
+            // Task list event delegation (for checkboxes and delete buttons)
+            taskList.addEventListener('click', (e) => {
+                const target = e.target;
+                
+                // Handle checkbox clicks
+                if (target.type === 'checkbox') {
+                    const taskItem = target.closest('.task-item');
+                    const taskId = taskItem.dataset.id;
+                    updateTaskStatus(taskId, target.checked);
+                }
+                
+                // Handle delete button clicks
+                if (target.classList.contains('delete-task')) {
+                    const taskItem = target.closest('.task-item');
+                    const taskId = taskItem.dataset.id;
+                    removeTask(taskId);
+                }
+            });
+            
+            // Task functions
+            function addTask(text) {
+                const taskId = Date.now().toString();
+                const taskItem = createTaskElement(taskId, text, false);
+                taskList.appendChild(taskItem);
+                saveTasks();
+            }
+            
+            function createTaskElement(id, text, completed) {
+                const taskItem = document.createElement('div');
+                taskItem.className = 'task-item flex items-center justify-between p-3 bg-white dark:bg-gray-700 rounded';
+                taskItem.dataset.id = id;
+                
+                const leftSide = document.createElement('div');
+                leftSide.className = 'flex items-center gap-3';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'w-5 h-5 accent-primary';
+                checkbox.checked = completed;
+                
+                const taskText = document.createElement('span');
+                taskText.textContent = text;
+                taskText.className = completed ? 'line-through text-gray-500 dark:text-gray-400' : '';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.innerHTML = '&times;';
+                deleteBtn.className = 'delete-task px-2 text-xl text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400';
+                
+                leftSide.appendChild(checkbox);
+                leftSide.appendChild(taskText);
+                taskItem.appendChild(leftSide);
+                taskItem.appendChild(deleteBtn);
+                
+                return taskItem;
+            }
+            
+            function updateTaskStatus(id, completed) {
+                const taskItem = document.querySelector(`.task-item[data-id="${id}"]`);
+                const taskText = taskItem.querySelector('span');
+                
+                if (completed) {
+                    taskText.classList.add('line-through', 'text-gray-500', 'dark:text-gray-400');
+                } else {
+                    taskText.classList.remove('line-through', 'text-gray-500', 'dark:text-gray-400');
+                }
+                
+                saveTasks();
+            }
+            
+            function removeTask(id) {
+                const taskItem = document.querySelector(`.task-item[data-id="${id}"]`);
+                taskList.removeChild(taskItem);
+                saveTasks();
+            }
+            
+            // In-memory task storage (tasks will be lost on page refresh)
+            // We're not using localStorage as it's not available in sandboxed iframes
+            
+            // Default tasks to show as examples
+            function loadTasks() {
+
+            }
+            
+            // We don't need to save tasks as they're only stored in memory
+            function saveTasks() {
+                // In a real app, this would save to localStorage or a backend
+                // But since we can't use storage APIs in the sandbox, this is a no-op
+            }
+            
+            // Timer functionality
+            function updateTimerDisplay() {
+                const minutes = Math.floor(timeRemaining / 60).toString().padStart(2, '0');
+                const seconds = (timeRemaining % 60).toString().padStart(2, '0');
+                timerDisplay.textContent = `${minutes}:${seconds}`;
+            }
+            
+            function resetTimerUI() {
+                startBtn.classList.remove('hidden');
+                pauseBtn.classList.add('hidden');
+            }
+            
+            function notifyTimerComplete() {
+                // Play sound (if browser allows)
+                try {
+                    const audio = new Audio('data:audio/wav;base64,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');
+                    audio.play();
+                } catch (e) {
+                    console.log('Could not play notification sound', e);
+                }
+                
+                // Visual notification
+                timerDisplay.classList.add('text-red-500');
+                setTimeout(() => {
+                    timerDisplay.classList.remove('text-red-500');
+                }, 3000);
+            }
+            
+            // Set custom timer duration
+            setBtn.addEventListener('click', () => {
+                const minutes = parseInt(durationInput.value, 10);
+                if (minutes > 0 && minutes <= 120) {
+                    timerDuration = minutes * 60;
+                    timeRemaining = timerDuration;
+                    updateTimerDisplay();
+                    resetTimerUI();
+                }
+            });
+            
+            // Timer functionality with fixed update mechanism
+            let lastUpdateTime = 0;
+            
+            function updateTimer() {
+                const currentTime = Date.now();
+                const elapsedSeconds = Math.floor((currentTime - lastUpdateTime) / 1000);
+                
+                if (elapsedSeconds >= 1) {
+                    timeRemaining = Math.max(0, timeRemaining - elapsedSeconds);
+                    lastUpdateTime = currentTime;
+                    updateTimerDisplay();
+                    
+                    if (timeRemaining === 0) {
+                        clearInterval(timerInterval);
+                        timerInterval = null;
+                        resetTimerUI();
+                        notifyTimerComplete();
+                    }
+                }
+            }
+            
+            // Start timer
+            startBtn.addEventListener('click', () => {
+                if (!timerInterval) {
+                    // Reset last update time when starting
+                    lastUpdateTime = Date.now();
+                    timerInterval = setInterval(updateTimer, 100); // Check more frequently for better accuracy
+                    startBtn.classList.add('hidden');
+                    pauseBtn.classList.remove('hidden');
+                }
+            });
+            
+            // Pause timer
+            pauseBtn.addEventListener('click', () => {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                startBtn.classList.remove('hidden');
+                pauseBtn.classList.add('hidden');
+            });
+            
+            // Reset timer
+            resetBtn.addEventListener('click', () => {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                timeRemaining = timerDuration;
+                updateTimerDisplay();
+                resetTimerUI();
+            });
+        });
+    </script>
+</body>
+</html>
